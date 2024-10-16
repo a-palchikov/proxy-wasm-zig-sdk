@@ -8,7 +8,7 @@ const state = @import("state.zig");
 /// The given function is responsible for creating contexts.RootContext and is called when
 /// hosts initialize plugins for each plugin configuration.
 /// Deallocation of contexts created inside the function should only be performed in RootContext.onDelete.
-pub fn setNewRootContextFunc(func: fn (context_id: usize) *contexts.RootContext) void {
+pub fn setNewRootContextFunc(func: *const fn (context_id: usize) *contexts.RootContext) void {
     state.current_state.new_root_context = func;
 }
 

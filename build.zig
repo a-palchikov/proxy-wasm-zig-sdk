@@ -1,24 +1,19 @@
 const std = @import("std");
 
-const Builder = std.build.Builder;
+pub fn build(b: *std.Build) void {
+    const target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .Debug });
 
-pub fn build(b: *Builder) void {
-    b.setPreferredReleaseMode(std.builtin.Mode.Debug);
-    const mode = b.standardReleaseOptions();
-
-    const bin = b.addExecutable("example", "example/example.zig");
-    bin.setBuildMode(mode);
-    bin.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
-    bin.addPackage(.{
-        .name = "proxy-wasm-zig-sdk",
-        .path = .{ .path = "lib/lib.zig" },
+    const bin = b.addExecutable(.{ .name = "example", .root_source_file = b.path("example/example.zig"), .optimize = optimize, .target = target });
+    const pkg = b.addModule("proxy-wasm-zig-sdk", .{
+        .root_source_file = b.path("lib/lib.zig"),
     });
     bin.wasi_exec_model = .reactor;
-    bin.install();
+    bin.root_module.addImport("proxy-wasm-zig-sdk", pkg);
+    b.installArtifact(bin);
 
     // e2e test setup.
-    var e2e_test = b.addTest("example/e2e_test.zig");
-    e2e_test.setBuildMode(mode);
+    var e2e_test = b.addTest(.{ .root_source_file = b.path("example/e2e_test.zig"), .target = target });
     e2e_test.step.dependOn(&bin.step);
 
     const e2e_test_setp = b.step("e2e", "Run End-to-End test with Envoy proxy");
