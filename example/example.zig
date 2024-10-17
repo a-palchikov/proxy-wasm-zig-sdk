@@ -260,7 +260,9 @@ const Root = struct {
         // Record a cryptographically secure random value on the gauge.
         var buf: [8]u8 = undefined;
         std.crypto.random.bytes(buf[0..]);
-        hostcalls.recordMetric(self.random_gauge_metric_id.?, std.mem.readInt(u64, buf[0..], .little)) catch unreachable;
+        // FIXME(dima): validate the buf spread for readInt/u64
+        //hostcalls.recordMetric(self.random_gauge_metric_id.?, std.mem.readInt(u64, buf[0..], .little)) catch unreachable;
+        hostcalls.recordMetric(self.random_gauge_metric_id.?, std.mem.readInt(u64, buf[0..][0..8], .little)) catch unreachable;
 
         // Insert the random value to the shared key value store.
         hostcalls.setSharedData(random_shared_data_key, buf[0..], 0) catch unreachable;
@@ -438,9 +440,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpRequestHeaders.
-    fn onHttpRequestHeaders(http_context: *contexts.HttpContext, num_headers: usize, end_of_stream: bool) enums.Action {
-        _ = num_headers;
-        _ = end_of_stream;
+    fn onHttpRequestHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
         const self: *Self = @fieldParentPtr("http_context", http_context);
 
         // Get request headers.
