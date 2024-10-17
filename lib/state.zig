@@ -33,7 +33,7 @@ export fn proxy_on_context_create(context_id: u32, root_context_id: u32) void {
         current_state.root_contexts.put(context_id, context) catch unreachable;
         return;
     }
-    // We should exist with unreachable when the root contexts do not exist.
+    // We should exit with unreachable when the root contexts do not exist.
     const root = current_state.root_contexts.get(root_context_id).?;
 
     // Try to create a stream context.

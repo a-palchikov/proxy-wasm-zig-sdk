@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
     });
     bin.wasi_exec_model = .reactor;
     bin.root_module.addImport("proxy-wasm-zig-sdk", pkg);
+    bin.rdynamic = true;
     b.installArtifact(bin);
 
     // e2e test setup.
