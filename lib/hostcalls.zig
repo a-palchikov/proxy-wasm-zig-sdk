@@ -603,14 +603,14 @@ pub fn done() void {
 /// Returns the metric ID which can be used for {get,increment,record}Metric calls.
 extern "env" fn proxy_define_metric(
     metric_type: enums.MetricType,
-    name_ptr: [*]const u8,
+    name_ptr: [*:0]const u8,
     name_size: usize,
     return_metric_id: *u32,
 ) enums.Status;
 
-pub fn defineMetric(metric_type: enums.MetricType, name: []const u8) hostcallErrors!u32 {
+pub fn defineMetric(metric_type: enums.MetricType, name: [:0]const u8) hostcallErrors!u32 {
     var metric_id: u32 = undefined;
-    switch (proxy_define_metric(metric_type, name.ptr, name.len, &metric_id)) {
+    switch (proxy_define_metric(metric_type, name, name.len, &metric_id)) {
         .Ok => return metric_id,
         .BadArgument => return hostcallErrors.BadArgument,
         .InvalidMemoryAccess => return hostcallErrors.InvalidMemoryAccess,

@@ -19,7 +19,6 @@ pub fn main() void {
 fn newRootContext(_: usize) *contexts.RootContext {
     var context: *Root = allocator.create(Root) catch unreachable;
     context.init();
-    std.debug.print("New root context: root@{*}, context@{*}", .{ context, &context.root_context });
     return &context.root_context;
 }
 
@@ -64,20 +63,27 @@ const Root = struct {
         // TODO: If we inline this initialization as a part of default value of root_context,
         // we have "Uncaught RuntimeError: table index is out of bounds" on proxy_on_vm_start.
         // Needs investigation.
-        const callbacks = contexts.RootCallbacks(self);
-        callbacks.onVmStartImpl = onVmStart;
-        callbacks.onPluginStartImpl = onPluginStart;
-        callbacks.onPluginDoneImpl = onPluginDone;
-        callbacks.onDeleteImpl = onDelete;
-        callbacks.newHttpContextImpl = newHttpContext;
-        callbacks.newTcpContextImpl = newTcpContext;
-        callbacks.onQueueReadyImpl = onQueueReady;
-        callbacks.onTickImpl = onTick;
+        const callbacks = contexts.RootCallbacks(*Self){
+            .onVmStartImpl = onVmStart,
+            .onPluginStartImpl = onPluginStart,
+            .onPluginDoneImpl = onPluginDone,
+            .onDeleteImpl = onDelete,
+            .newHttpContextImpl = newHttpContext,
+            .newTcpContextImpl = newTcpContext,
+            .onQueueReadyImpl = onQueueReady,
+            .onTickImpl = onTick,
+        };
         self.root_context = contexts.RootContext.init(self, callbacks);
+        // TODO(dima): have to initialize (again?) since the allocator is not initializing the memory
+        // and the defaults are not enforced
+        self.tcp_total_data_size_counter_metric_id = null;
+        self.random_gauge_metric_id = null;
+        self.tick_counter_metric_id = null;
+        self.user_agent_shared_queue_id = null;
     }
 
     // Implement contexts.RootContext.onVmStart.
-    fn onVmStart(_: *contexts.RootContext, configuration_size: usize) bool {
+    fn onVmStart(_: *Self, configuration_size: usize) bool {
         // Log the VM configuration.
         if (configuration_size > 0) {
             var configuration = hostcalls.getBufferBytes(enums.BufferType.VmConfiguration, 0, configuration_size) catch unreachable;
@@ -94,32 +100,18 @@ const Root = struct {
     }
 
     // Implement contexts.RootContext.onPluginStart.
-    fn onPluginStart(root_context: *contexts.RootContext, configuration_size: usize) bool {
-        //const self: *Self = @fieldParentPtr("root_context", root_context);
-        const self: *Self = @alignCast(@fieldParentPtr("root_context", root_context));
-
-        std.debug.print("onPluginStart: @{*}", .{self});
-
+    fn onPluginStart(self: *Self, configuration_size: usize) bool {
         // Get plugin configuration data.
         std.debug.assert(configuration_size > 0);
         var plugin_config_data = hostcalls.getBufferBytes(enums.BufferType.PluginConfiguration, 0, configuration_size) catch unreachable;
         defer plugin_config_data.deinit();
-
-        // Parse it to ConfigurationData struct.
-        //self.plugin_configuration = std.json.parseFromSlice(
-        //    PluginConfiguration,
-        //    allocator,
-        //    plugin_config_data.raw_data,
-        //    .{ .allocate = .alloc_always },
-        //) catch unreachable;
-        //self.plugin_configuration = parsePluginConfig(plugin_config_data.raw_data) catch unreachable;
 
         self.plugin_configuration = parsePluginConfig(plugin_config_data.raw_data) catch unreachable;
 
         // Log the given and parsed configuration.
         const message = std.fmt.allocPrint(
             allocator,
-            "plugin configuration: root=\"{s}\", [0]http=\"{s}\", stream=\"{s}\"",
+            "plugin configuration: root=\"{s}\", http=\"{s}\", stream=\"{s}\"",
             .{
                 self.plugin_configuration.value.root,
                 self.plugin_configuration.value.http,
@@ -140,10 +132,7 @@ const Root = struct {
     }
 
     // Implement contexts.RootContext.onPluginDone.
-    fn onPluginDone(root_context: *contexts.RootContext) bool {
-        //const self: *Self = @fieldParentPtr("root_context", root_context);
-        const self: *Self = @alignCast(@fieldParentPtr("root_context", root_context));
-
+    fn onPluginDone(self: *Self) bool {
         // Log the given and parsed configuration.
         const message = std.fmt.allocPrint(
             allocator,
@@ -160,30 +149,15 @@ const Root = struct {
     }
 
     // Implement contexts.RootContext.onDelete.
-    fn onDelete(root_context: *contexts.RootContext) void {
-        //const self: *Self = @fieldParentPtr("root_context", root_context);
-        const self: *Self = @alignCast(@fieldParentPtr("root_context", root_context));
-
+    fn onDelete(self: *Self) void {
         // Destory the configura allocated during json parsing.
         self.plugin_configuration.deinit();
         // Destroy myself.
         allocator.destroy(self);
     }
 
-    fn parsePluginConfig(raw_data: []const u8) !*const Managed(PluginConfiguration) {
-        // When in WASM context, this needs to on heap - otherwise it will be created on stack
-        // and deallocated upon return
-        const parsed = try std.json.parseFromSlice(PluginConfiguration, allocator, raw_data, .{});
-        const config = allocator.create(Managed(PluginConfiguration)) catch unreachable;
-        config.* = Managed(PluginConfiguration).fromJson(parsed);
-        return config;
-    }
-
     // Implement contexts.RootContext.newHttpContext.
-    fn newTcpContext(root_context: *contexts.RootContext, context_id: u32) ?*contexts.TcpContext {
-        //const self: *Self = @fieldParentPtr("root_context", root_context);
-        const self: *Self = @alignCast(@fieldParentPtr("root_context", root_context));
-
+    fn newTcpContext(self: *Self, context_id: u32) ?*contexts.TcpContext {
         // Switch type of TcpContext based on the configuration.
         if (std.mem.eql(u8, self.plugin_configuration.value.tcp, "total-data-size-counter")) {
             // Initialize tick counter metric id.
@@ -202,10 +176,7 @@ const Root = struct {
     }
 
     // Implement contexts.RootContext.newHttpContext.
-    fn newHttpContext(root_context: *contexts.RootContext, context_id: u32) ?*contexts.HttpContext {
-        //const self: *Self = @fieldParentPtr("root_context", root_context);
-        const self: *Self = @alignCast(@fieldParentPtr("root_context", root_context));
-
+    fn newHttpContext(self: *Self, context_id: u32) ?*contexts.HttpContext {
         // Switch type of HttpContext based on the configuration.
         if (std.mem.eql(u8, self.plugin_configuration.value.http, "header-operation")) {
             // Initialize tick counter metric id.
@@ -235,13 +206,12 @@ const Root = struct {
     }
 
     // Implement contexts.RootContext.onTick.
-    fn onQueueReady(root_context: *contexts.RootContext, quque_id: u32) void {
-        _ = root_context;
+    fn onQueueReady(_: *Self, queue_id: u32) void {
         // We know that this is called for user-agents queue since that's the only queue we registered.
 
         // Since we are in a singleton, we can assume that this Wasm VM is the only VM to dequeue this queue.
         // So we can ignore the error returned by dequeueSharedQueue including Empty error.
-        var ua = hostcalls.dequeueSharedQueue(quque_id) catch unreachable;
+        var ua = hostcalls.dequeueSharedQueue(queue_id) catch unreachable;
         defer ua.deinit();
 
         // Log the user-agent.
@@ -251,15 +221,12 @@ const Root = struct {
     }
 
     // Implement contexts.RootContext.onTick.
-    fn onTick(root_context: *contexts.RootContext) void {
-        const self: *Self = @fieldParentPtr("root_context", root_context);
-        //const self: *Self = @alignCast(@fieldParentPtr("root_context", root_context));
-
+    fn onTick(self: *Self) void {
         // Log the current timestamp.
         const message = std.fmt.allocPrint(
             allocator,
-            "on tick called at {d} with http='{s}' (@{*})",
-            .{ std.time.nanoTimestamp(), self.plugin_configuration.value.http, self },
+            "on tick called at {d}",
+            .{std.time.nanoTimestamp()},
         ) catch unreachable;
         defer allocator.free(message);
         hostcalls.log(enums.LogLevel.Info, message) catch unreachable;
@@ -291,6 +258,15 @@ const Root = struct {
         // Insert the random value to the shared key value store.
         hostcalls.setSharedData(random_shared_data_key, buf[0..], 0) catch unreachable;
     }
+
+    fn parsePluginConfig(raw_data: []const u8) !*const Managed(PluginConfiguration) {
+        // When in WASM context, this needs to on heap - otherwise it will be created on stack
+        // and deallocated upon return
+        const parsed = try std.json.parseFromSlice(PluginConfiguration, allocator, raw_data, .{});
+        const config = try allocator.create(Managed(PluginConfiguration));
+        config.* = Managed(PluginConfiguration).fromJson(parsed);
+        return config;
+    }
 };
 
 const TcpTotalDataSizeCounter = struct {
@@ -304,16 +280,16 @@ const TcpTotalDataSizeCounter = struct {
     fn init(self: *Self, context_id: u32, metric_id: u32) void {
         self.context_id = context_id;
         self.total_data_size_counter_metric_id = metric_id;
-        self.tcp_context = contexts.TcpContext{
+        const callbacks = contexts.TcpCallbacks(*Self){
             .onNewConnectionImpl = onNewConnection,
             .onDownstreamDataImpl = onDownstreamData,
             .onDownstreamCloseImpl = onDownstreamClose,
             .onUpstreamDataImpl = onUpstreamData,
             .onUpstreamCloseImpl = onUpstreamClose,
             .onLogImpl = onLog,
-            .onHttpCalloutResponseImpl = null,
             .onDeleteImpl = onDelete,
         };
+        self.tcp_context = contexts.TcpContext.init(self, callbacks);
 
         const message = std.fmt.allocPrint(
             allocator,
@@ -324,10 +300,7 @@ const TcpTotalDataSizeCounter = struct {
         hostcalls.log(enums.LogLevel.Info, message) catch unreachable;
     }
     // Implement contexts.TcpContext.onNewConnection.
-    fn onNewConnection(tcp_context: *contexts.TcpContext) enums.Action {
-        //const self: *Self = @fieldParentPtr("tcp_context", tcp_context);
-        const self: *Self = @alignCast(@fieldParentPtr("tcp_context", tcp_context));
-
+    fn onNewConnection(self: *Self) enums.Action {
         const message = std.fmt.allocPrint(
             allocator,
             "connection established: {d}",
@@ -339,10 +312,7 @@ const TcpTotalDataSizeCounter = struct {
     }
 
     // Implement contexts.TcpContext.onDownstreamData.
-    fn onDownstreamData(tcp_context: *contexts.TcpContext, data_size: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("tcp_context", tcp_context);
-        const self: *Self = @alignCast(@fieldParentPtr("tcp_context", tcp_context));
-
+    fn onDownstreamData(self: *Self, data_size: usize, _: bool) enums.Action {
         // Increment the total data size counter.
         if (data_size > 0) {
             hostcalls.incrementMetric(self.total_data_size_counter_metric_id, data_size) catch unreachable;
@@ -351,7 +321,7 @@ const TcpTotalDataSizeCounter = struct {
     }
 
     // Implement contexts.TcpContext.onDownstreamClose.
-    fn onDownstreamClose(_: *contexts.TcpContext, _: enums.PeerType) void {
+    fn onDownstreamClose(_: *Self, _: enums.PeerType) void {
         // Get source addess of this connection.
         const path: [2][]const u8 = [2][]const u8{ "source", "address" };
         var source_addess = hostcalls.getProperty(path[0..]) catch unreachable;
@@ -368,10 +338,7 @@ const TcpTotalDataSizeCounter = struct {
     }
 
     // Implement contexts.TcpContext.onUpstreamData.
-    fn onUpstreamData(tcp_context: *contexts.TcpContext, data_size: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("tcp_context", tcp_context);
-        const self: *Self = @alignCast(@fieldParentPtr("tcp_context", tcp_context));
-
+    fn onUpstreamData(self: *Self, data_size: usize, _: bool) enums.Action {
         // Increment the total data size counter.
         if (data_size > 0) {
             hostcalls.incrementMetric(self.total_data_size_counter_metric_id, data_size) catch unreachable;
@@ -380,7 +347,7 @@ const TcpTotalDataSizeCounter = struct {
     }
 
     // Implement contexts.TcpContext.onUpstreamClose.
-    fn onUpstreamClose(_: *contexts.TcpContext, _: enums.PeerType) void {
+    fn onUpstreamClose(_: *Self, _: enums.PeerType) void {
         // Get source addess of this connection.
         const path: [2][]const u8 = [2][]const u8{ "upstream", "address" };
         var upstream_addess = hostcalls.getProperty(path[0..]) catch unreachable;
@@ -397,10 +364,7 @@ const TcpTotalDataSizeCounter = struct {
     }
 
     // Implement contexts.TcpContext.onLog.
-    fn onLog(tcp_context: *contexts.TcpContext) void {
-        //const self: *Self = @fieldParentPtr("tcp_context", tcp_context);
-        const self: *Self = @alignCast(@fieldParentPtr("tcp_context", tcp_context));
-
+    fn onLog(self: *Self) void {
         const message = std.fmt.allocPrint(
             allocator,
             "tcp context {d} is at logging phase..",
@@ -411,10 +375,7 @@ const TcpTotalDataSizeCounter = struct {
     }
 
     // Implement contexts.TcpContext.onDelete.
-    fn onDelete(tcp_context: *contexts.TcpContext) void {
-        //const self: *Self = @fieldParentPtr("tcp_context", tcp_context);
-        const self: *Self = @alignCast(@fieldParentPtr("tcp_context", tcp_context));
-
+    fn onDelete(self: *Self) void {
         const message = std.fmt.allocPrint(
             allocator,
             "deleting tcp context {d}..",
@@ -445,7 +406,7 @@ const HttpHeaderOperation = struct {
         self.tick_counter_metric_id = tick_counter_metric_id;
         self.random_shared_data_key = random_shared_data_key;
         self.user_agent_shared_queue_id = user_agent_queue_id;
-        self.http_context = contexts.HttpContext{
+        const callbacks = contexts.HttpCallbacks(*Self){
             .onHttpRequestHeadersImpl = onHttpRequestHeaders,
             .onHttpRequestBodyImpl = null,
             .onHttpRequestTrailersImpl = onHttpRequestTrailers,
@@ -457,6 +418,8 @@ const HttpHeaderOperation = struct {
             .onDeleteImpl = onDelete,
         };
 
+        self.http_context = contexts.HttpContext.init(self, callbacks);
+
         const message = std.fmt.allocPrint(
             allocator,
             "HttpHeaderOperation context created: {d}",
@@ -467,10 +430,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpRequestHeaders.
-    fn onHttpRequestHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpRequestHeaders(self: *Self, _: usize, _: bool) enums.Action {
         // Get request headers.
         var headers: hostcalls.HeaderMap = hostcalls.getHeaderMap(enums.MapType.HttpRequestHeaders) catch unreachable;
         defer headers.deinit();
@@ -512,10 +472,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpRequestTrailers.
-    fn onHttpRequestTrailers(http_context: *contexts.HttpContext, num_trailers: usize) enums.Action {
-        _ = http_context;
-        _ = num_trailers;
-
+    fn onHttpRequestTrailers(_: *Self, _: usize) enums.Action {
         // Log request trailers.
         var headers: hostcalls.HeaderMap = hostcalls.getHeaderMap(enums.MapType.HttpRequestTrailers) catch unreachable;
         defer headers.deinit();
@@ -533,10 +490,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpResponseHeaders.
-    fn onHttpResponseHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpResponseHeaders(self: *Self, _: usize, _: bool) enums.Action {
         // Get response headers.
         var headers: hostcalls.HeaderMap = hostcalls.getHeaderMap(enums.MapType.HttpResponseHeaders) catch unreachable;
         defer headers.deinit();
@@ -591,10 +545,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpResponseTrailers.
-    fn onHttpResponseTrailers(http_context: *contexts.HttpContext, num_trailers: usize) enums.Action {
-        _ = http_context;
-        _ = num_trailers;
-
+    fn onHttpResponseTrailers(_: *Self, _: usize) enums.Action {
         // Log response trailers.
         var headers: hostcalls.HeaderMap = hostcalls.getHeaderMap(enums.MapType.HttpResponseTrailers) catch unreachable;
         defer headers.deinit();
@@ -612,10 +563,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onLog.
-    fn onLog(http_context: *contexts.HttpContext) void {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onLog(self: *Self) void {
         // Log the upstream cluster name.
         const path: [1][]const u8 = [1][]const u8{"cluster_name"};
         var cluster_name = hostcalls.getProperty(path[0..]) catch unreachable;
@@ -657,10 +605,7 @@ const HttpHeaderOperation = struct {
     }
 
     // Implement contexts.HttpContext.onDelete.
-    fn onDelete(http_context: *contexts.HttpContext) void {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onDelete(self: *Self) void {
         // Destory the allocated WasmData.
         self.request_path.deinit();
         // Destory myself.
@@ -679,7 +624,7 @@ const HttpBodyOperation = struct {
 
     // Initialize this context.
     fn init(self: *Self) void {
-        self.http_context = contexts.HttpContext{
+        self.http_context = contexts.HttpContext.init(self, contexts.HttpCallbacks(*Self){
             .onHttpRequestHeadersImpl = onHttpRequestHeaders,
             .onHttpRequestBodyImpl = onHttpRequestBody,
             .onHttpRequestTrailersImpl = null,
@@ -689,24 +634,18 @@ const HttpBodyOperation = struct {
             .onHttpCalloutResponseImpl = null,
             .onLogImpl = null,
             .onDeleteImpl = onDelete,
-        };
+        });
     }
 
     // Implement contexts.HttpContext.onHttpRequestHeaders.
-    fn onHttpRequestHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpRequestHeaders(self: *Self, _: usize, _: bool) enums.Action {
         // Get the :path header value.
         self.request_path = hostcalls.getHeaderMapValue(enums.MapType.HttpRequestHeaders, ":path") catch unreachable;
         return enums.Action.Continue;
     }
 
     // Implement contexts.HttpContext.onHttpRequestBody.
-    fn onHttpRequestBody(http_context: *contexts.HttpContext, body_size: usize, end_of_stream: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpRequestBody(self: *Self, body_size: usize, end_of_stream: bool) enums.Action {
         // Switch based on the request path.
         // If we have "echo" in :path, then Pause and send the entire body as-is.
         if (std.mem.indexOf(u8, self.request_path.raw_data, "echo")) |_| {
@@ -728,10 +667,7 @@ const HttpBodyOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpResponseHeaders.
-    fn onHttpResponseHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpResponseHeaders(self: *Self, _: usize, _: bool) enums.Action {
         // Remove Content-Length header if sha256-response, otherwise client breaks because we change the response.
         if (std.mem.indexOf(u8, self.request_path.raw_data, "sha256-response")) |_| {
             hostcalls.removeHeaderMapValue(enums.MapType.HttpResponseHeaders, "Content-Length") catch unreachable;
@@ -740,9 +676,7 @@ const HttpBodyOperation = struct {
     }
 
     // Implement contexts.HttpContext.onHttpResponseBody.
-    fn onHttpResponseBody(http_context: *contexts.HttpContext, body_size: usize, end_of_stream: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
+    fn onHttpResponseBody(self: *Self, body_size: usize, end_of_stream: bool) enums.Action {
         if (std.mem.indexOf(u8, self.request_path.raw_data, "echo")) |_| {
             return enums.Action.Continue;
         } else if (std.mem.indexOf(u8, self.request_path.raw_data, "sha256-response")) |_| {
@@ -776,10 +710,7 @@ const HttpBodyOperation = struct {
     }
 
     // Implement contexts.HttpContext.onDelete.
-    fn onDelete(http_context: *contexts.HttpContext) void {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onDelete(self: *Self) void {
         // Destory myself.
         allocator.destroy(self);
     }
@@ -796,7 +727,7 @@ const HttpRandomAuth = struct {
 
     // Initialize this context.
     fn init(self: *Self) void {
-        self.http_context = contexts.HttpContext{
+        const callbacks = contexts.HttpCallbacks(*Self){
             .onHttpRequestHeadersImpl = onHttpRequestHeaders,
             .onHttpRequestBodyImpl = null,
             .onHttpRequestTrailersImpl = null,
@@ -807,13 +738,11 @@ const HttpRandomAuth = struct {
             .onLogImpl = null,
             .onDeleteImpl = onDelete,
         };
+        self.http_context = contexts.HttpContext.init(self, callbacks);
     }
 
     // Implement contexts.HttpContext.onHttpRequestHeaders.
-    fn onHttpRequestHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpRequestHeaders(self: *Self, _: usize, _: bool) enums.Action {
         // Get the original response headers.
         self.dispatch_request_headers = hostcalls.getHeaderMap(enums.MapType.HttpRequestHeaders) catch unreachable;
 
@@ -833,10 +762,7 @@ const HttpRandomAuth = struct {
     }
 
     // Implement contexts.HttpContext.onHttpResponseHeaders.
-    fn onHttpResponseHeaders(http_context: *contexts.HttpContext, _: usize, _: bool) enums.Action {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpResponseHeaders(self: *Self, _: usize, _: bool) enums.Action {
         self.response_callout_id = hostcalls.dispatchHttpCall(
             "httpbin",
             self.dispatch_request_headers.map,
@@ -848,10 +774,7 @@ const HttpRandomAuth = struct {
     }
 
     // Implement contexts.HttpContext.onDelete.
-    fn onDelete(http_context: *contexts.HttpContext) void {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onDelete(self: *Self) void {
         // Free the request headers.
         self.dispatch_request_headers.deinit();
 
@@ -860,10 +783,7 @@ const HttpRandomAuth = struct {
     }
 
     // Implement contexts.HttpContext.onHttpCalloutResponse.
-    fn onHttpCalloutResponse(http_context: *contexts.HttpContext, callout_id: u32, _: usize, body_size: usize, _: usize) void {
-        //const self: *Self = @fieldParentPtr("http_context", http_context);
-        const self: *Self = @alignCast(@fieldParentPtr("http_context", http_context));
-
+    fn onHttpCalloutResponse(self: *Self, callout_id: u32, _: usize, body_size: usize, _: usize) void {
         // (Debug) Check the callout ID.
         std.debug.assert(
             self.request_callout_id == callout_id or self.response_callout_id == callout_id,

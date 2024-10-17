@@ -33,6 +33,7 @@ export fn proxy_on_context_create(context_id: u32, root_context_id: u32) void {
         current_state.root_contexts.put(context_id, context) catch unreachable;
         return;
     }
+
     // We should exit with unreachable when the root contexts do not exist.
     const root = current_state.root_contexts.get(root_context_id).?;
 
@@ -93,9 +94,9 @@ export fn proxy_on_configure(context_id: u32, configuration_size: usize) bool {
     return root_context.onPluginStart(configuration_size);
 }
 
-export fn proxy_on_tick(context_id: u32) void {
-    var root_context = current_state.root_contexts.get(context_id).?;
-    current_state.active_id = context_id;
+export fn proxy_on_tick(plugin_context_id: u32) void {
+    var root_context = current_state.root_contexts.get(plugin_context_id).?;
+    current_state.active_id = plugin_context_id;
     root_context.onTick();
 }
 
