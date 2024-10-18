@@ -14,9 +14,12 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(bin);
 
     // e2e test setup.
-    var e2e_test = b.addTest(.{ .root_source_file = b.path("example/e2e_test.zig"), .target = target });
+    const host_target = b.standardTargetOptions(.{});
+    var e2e_test = b.addTest(.{ .root_source_file = b.path("example/e2e_test.zig"), .target = host_target });
     e2e_test.step.dependOn(&bin.step);
+    e2e_test.linkLibC();
+    const run_e2e = b.addRunArtifact(e2e_test);
 
     const e2e_test_setp = b.step("e2e", "Run End-to-End test with Envoy proxy");
-    e2e_test_setp.dependOn(&e2e_test.step);
+    e2e_test_setp.dependOn(&run_e2e.step);
 }
