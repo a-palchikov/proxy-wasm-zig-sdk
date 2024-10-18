@@ -150,7 +150,7 @@ const Root = struct {
 
     // Implement contexts.RootContext.onDelete.
     fn onDelete(self: *Self) void {
-        // Destory the configura allocated during json parsing.
+        // Destory the configuration allocated during json parsing.
         self.plugin_configuration.deinit();
         // Destroy myself.
         allocator.destroy(self);
@@ -205,7 +205,7 @@ const Root = struct {
         return null;
     }
 
-    // Implement contexts.RootContext.onTick.
+    // Implement contexts.RootContext.onQueueReady.
     fn onQueueReady(_: *Self, queue_id: u32) void {
         // We know that this is called for user-agents queue since that's the only queue we registered.
 
