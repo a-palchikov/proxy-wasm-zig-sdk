@@ -262,7 +262,7 @@ const Root = struct {
     fn parsePluginConfig(raw_data: []const u8) !*const Managed(PluginConfiguration) {
         // When in WASM context, this needs to on heap - otherwise it will be created on stack
         // and deallocated upon return
-        const parsed = try std.json.parseFromSlice(PluginConfiguration, allocator, raw_data, .{});
+        const parsed = try std.json.parseFromSlice(PluginConfiguration, allocator, raw_data, .{ .allocate = .alloc_always });
         const config = try allocator.create(Managed(PluginConfiguration));
         config.* = Managed(PluginConfiguration).fromJson(parsed);
         return config;
