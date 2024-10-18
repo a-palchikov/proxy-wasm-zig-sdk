@@ -82,7 +82,7 @@ static_resources:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 8001
+                      port_value: 9901
     - name: httpbin
       connect_timeout: 5000s
       type: strict_dns
@@ -101,5 +101,5 @@ admin:
   access_log_path: "/dev/null"
   address:
     socket_address:
-      address: 0.0.0.0
-      port_value: 8001
+      address: 127.0.0.1
+      port_value: 9901
