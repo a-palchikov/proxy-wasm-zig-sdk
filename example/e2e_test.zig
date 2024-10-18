@@ -35,10 +35,10 @@ fn requireWasmBinary() !void {
     assert(std.mem.eql(u8, header_buf[0..], exp_header[0..]));
 }
 
-fn requireRunAndWaitEnvoyStarted() !*std.ChildProcess {
+fn requireRunAndWaitEnvoyStarted() !*std.process.Child {
     // Create a child process.
-    const envoy_argv = [_][]const u8{ "envoy", "-c", "example/envoy.yaml", "--concurrency", "2" };
-    const envoy = try std.ChildProcess.init(envoy_argv[0..], allocator);
+    const envoy_argv = [_][]const u8{ "func-e", "run", "-c", "example/envoy.yaml", "--concurrency", "2" };
+    var envoy = std.process.Child.init(envoy_argv[0..], allocator);
 
     envoy.stdin_behavior = .Ignore;
     envoy.stdout_behavior = .Ignore;
@@ -63,7 +63,7 @@ fn requireRunAndWaitEnvoyStarted() !*std.ChildProcess {
     }
 
     std.time.sleep(std.time.ns_per_s * 5);
-    return envoy;
+    return &envoy;
 }
 
 fn printFileReader(reader: std.fs.File.Reader) !void {
@@ -82,12 +82,12 @@ fn requireExecStdout(comptime intervalInNanoSec: u64, comptime maxRetry: u64, ar
     var i: u64 = 0;
     while (i < maxRetry) : (i += 1) {
         // Exec args.
-        const res = try std.ChildProcess.exec(.{ .allocator = allocator, .argv = argv });
+        const res = try std.process.Child.run(.{ .allocator = allocator, .argv = argv });
         defer allocator.free(res.stdout);
         defer allocator.free(res.stderr);
 
         // Find all the expected strings.
-        var j: u64 = 0;
+        var j: usize = 0;
         while (j < expects.len) : (j += 1) if (std.mem.indexOf(u8, res.stdout, expects[j]) == null) break;
 
         // If all found, break the loop.
@@ -181,7 +181,7 @@ fn requireTcpDataSizeCounter() !void {
     }
 }
 
-fn requireEnvoyLogs(envoy: *std.ChildProcess) !void {
+fn requireEnvoyLogs(envoy: *std.process.Child) !void {
     const exps = [_][]const u8{
         "wasm log http-header-operation ziglang_vm: plugin configuration: root=\"\", http=\"header-operation\", stream=\"\"",
         "wasm log http-body-operation ziglang_vm: plugin configuration: root=\"\", http=\"body-operation\", stream=\"\"",
