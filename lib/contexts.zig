@@ -20,9 +20,9 @@ pub const RootContext = struct {
 
     pub fn init(pointer: anytype, comptime callbacks: RootCallbacks(@TypeOf(pointer))) RootContext {
         const Ptr = @TypeOf(pointer);
-        assert(@typeInfo(Ptr) == .Pointer); // Must be a pointer
-        assert(@typeInfo(Ptr).Pointer.size == .One); // Must be a single-item pointer
-        assert(@typeInfo(@typeInfo(Ptr).Pointer.child) == .Struct); // Must point to a struct
+        assert(@typeInfo(Ptr) == .pointer); // Must be a pointer
+        assert(@typeInfo(Ptr).pointer.size == .One); // Must be a single-item pointer
+        assert(@typeInfo(@typeInfo(Ptr).pointer.child) == .@"struct"); // Must point to a struct
         const gen = struct {
             fn onVmStart(ptr: *anyopaque, configuration_size: usize) bool {
                 if (callbacks.onVmStartImpl) |impl| {
@@ -153,9 +153,9 @@ pub const TcpContext = struct {
 
     pub fn init(pointer: anytype, comptime callbacks: TcpCallbacks(@TypeOf(pointer))) TcpContext {
         const Ptr = @TypeOf(pointer);
-        assert(@typeInfo(Ptr) == .Pointer); // Must be a pointer
-        assert(@typeInfo(Ptr).Pointer.size == .One); // Must be a single-item pointer
-        assert(@typeInfo(@typeInfo(Ptr).Pointer.child) == .Struct); // Must point to a struct
+        assert(@typeInfo(Ptr) == .pointer); // Must be a pointer
+        assert(@typeInfo(Ptr).pointer.size == .One); // Must be a single-item pointer
+        assert(@typeInfo(@typeInfo(Ptr).pointer.child) == .@"struct"); // Must point to a struct
         const gen = struct {
             fn onDownstreamData(ptr: *anyopaque, data_size: usize, end_of_stream: bool) enums.Action {
                 if (callbacks.onDownstreamDataImpl) |impl| {
@@ -274,9 +274,9 @@ pub const HttpContext = struct {
 
     pub fn init(pointer: anytype, comptime callbacks: HttpCallbacks(@TypeOf(pointer))) HttpContext {
         const Ptr = @TypeOf(pointer);
-        assert(@typeInfo(Ptr) == .Pointer); // Must be a pointer
-        assert(@typeInfo(Ptr).Pointer.size == .One); // Must be a single-item pointer
-        assert(@typeInfo(@typeInfo(Ptr).Pointer.child) == .Struct); // Must point to a struct
+        assert(@typeInfo(Ptr) == .pointer); // Must be a pointer
+        assert(@typeInfo(Ptr).pointer.size == .One); // Must be a single-item pointer
+        assert(@typeInfo(@typeInfo(Ptr).pointer.child) == .@"struct"); // Must point to a struct
         const gen = struct {
             fn onHttpRequestHeaders(ptr: *anyopaque, num_headers: usize, end_of_stream: bool) enums.Action {
                 if (callbacks.onHttpRequestHeadersImpl) |impl| {

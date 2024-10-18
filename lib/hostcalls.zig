@@ -98,7 +98,8 @@ pub fn getBufferBytes(buffer_type: enums.BufferType, start: usize, max_size: usi
     var buf_len: usize = undefined;
     switch (proxy_get_buffer_bytes(buffer_type, start, max_size, &buf_ptr, &buf_len)) {
         .Ok => {
-            return if (buf_ptr == undefined) hostcallErrors.NotFound else WasmData{ .raw_data = buf_ptr[0..buf_len] };
+            // FIXIME: How can it be Ok and NotFound at the same time?
+            return WasmData{ .raw_data = buf_ptr[0..buf_len] };
         },
         .NotFound => return hostcallErrors.NotFound,
         else => unreachable,
