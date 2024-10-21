@@ -2,6 +2,8 @@ pub const allocator = @import("memory.zig").allocator;
 pub const contexts = @import("contexts.zig");
 pub const enums = @import("enums.zig");
 pub const hostcalls = @import("hostcalls.zig");
+pub const xfcc = @import("xfcc.zig");
+pub const percent_decoder = @import("percent-decoder.zig");
 const state = @import("state.zig");
 
 /// setNewRootContextFunc is the entrypoint for setting up this entire Wasm VM.

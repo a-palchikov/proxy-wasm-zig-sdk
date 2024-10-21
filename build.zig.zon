@@ -1,0 +1,18 @@
+.{
+    .name = "envoy-gateway-examples",
+    .version = "0.0.0",
+
+    .minimum_zig_version = "0.13.0",
+
+    .dependencies = .{
+        .mecha = .{
+            .url = "https://github.com/Hejsil/mecha/archive/refs/heads/master.zip",
+            .hash = "12204f319918265b1740c7ccc44bdfa711691fd738616917b85497cfa6c24461589b",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "example",
+    },
+}

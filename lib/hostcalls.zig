@@ -280,7 +280,7 @@ extern "env" fn proxy_add_header_map_value(
     value_size: usize,
 ) enums.Status;
 
-/// replaceHeaderMapValue adds the value of the given key in the map of map_type.
+/// addHeaderMapValue adds the value of the given key in the map of map_type.
 pub fn addHeaderMapValue(map_type: enums.MapType, key: []const u8, value: []const u8) hostcallErrors!void {
     switch (proxy_add_header_map_value(map_type, key.ptr, key.len, value.ptr, value.len)) {
         .Ok => {},
