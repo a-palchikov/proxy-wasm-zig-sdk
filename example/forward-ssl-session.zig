@@ -142,12 +142,12 @@ const ForwardSslSession = struct {
 
     context_id: usize = 0,
     cert: x509.Certificate = undefined,
-    cert_header: ?[]u8 = null,
+    cert_pem: ?[]u8 = null,
 
     // Initialize this context.
     fn init(self: *Self, context_id: usize) void {
         self.context_id = context_id;
-        self.cert_header = null;
+        self.cert_pem = null;
         const callbacks = contexts.HttpCallbacks(*Self){
             .onHttpRequestHeadersImpl = onHttpRequestHeaders,
             .onHttpRequestBodyImpl = null,
@@ -195,16 +195,20 @@ const ForwardSslSession = struct {
         defer xfcc_headers.deinit();
         const headers = xfcc.parse(allocator, xfcc_headers.raw_data) catch unreachable;
         for (headers) |header| {
-            if (std.mem.eql(u8, header.key, "Cert")) {
-                const cert_header = allocator.alloc(u8, header.value.len) catch unreachable;
-                const decoded_cert = std.Uri.percentDecodeBackwards(cert_header, header.value);
-                const certs = cert.convertPEMsToDERs(decoded_cert, "CERTIFICATE", allocator) catch unreachable;
-                defer certs.deinit();
-                self.cert_header = allocator.dupe(u8, header.value) catch unreachable;
-                std.debug.assert(certs.items.len > 0);
-                var stream = std.io.fixedBufferStream(certs.items[0]);
-                self.cert = x509.Certificate.decode(stream.reader(), allocator) catch unreachable;
-                self.cert.?.tbs_certificate.print(std.debug.print, "");
+            switch (header.key) {
+                .Cert => {
+                    const cert_header = allocator.alloc(u8, header.value.len) catch unreachable;
+                    defer allocator.free(cert_header);
+                    const decoded_cert = std.Uri.percentDecodeBackwards(cert_header, header.value);
+                    const certs = cert.convertPEMsToDERs(decoded_cert, "CERTIFICATE", allocator) catch unreachable;
+                    defer certs.deinit();
+                    self.cert_pem = allocator.dupe(u8, header.value) catch unreachable;
+                    std.debug.assert(certs.items.len > 0);
+                    var stream = std.io.fixedBufferStream(certs.items[0]);
+                    self.cert = x509.Certificate.decode(stream.reader(), allocator) catch unreachable;
+                    self.cert.tbs_certificate.print(std.debug.print, "");
+                },
+                else => {},
             }
         }
 
@@ -248,15 +252,13 @@ const ForwardSslSession = struct {
         }
 
         // Set x-ssl headers
-        if (self.cert_header) |cert_header| {
-            headers.map.put("x-ssl-client-cert", cert_header) catch unreachable;
-            std.debug.print("client-cert: {s}\n", .{cert_header});
-            var issuer = self.cert.?.tbs_certificate.issuer.toString(allocator) catch unreachable;
+        if (self.cert_pem) |cert_pem| {
+            headers.map.put("x-ssl-client-cert", cert_pem) catch unreachable;
+            var issuer = self.cert.tbs_certificate.issuer.toString(allocator) catch unreachable;
             defer issuer.deinit();
             const iss = issuer.toOwnedSlice() catch unreachable;
-            std.debug.print("issuer: {s}\n", .{iss});
             headers.map.put("x-ssl-issuer", iss) catch unreachable;
-            headers.map.put("x-ssl-serial", self.cert.tbs_certificate.serial_number.serial.slice()) catch unreachable;
+            //headers.map.put("x-ssl-serial", self.cert.tbs_certificate.serial_number.serial.slice()) catch unreachable;
             hostcalls.replaceHeaderMap(enums.MapType.HttpResponseHeaders, headers.map) catch unreachable;
         }
 

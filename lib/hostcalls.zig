@@ -169,31 +169,30 @@ fn serializeHeaders(map: std.StringHashMap([]const u8)) ![]const u8 {
 
     // Write the number of headers.
     std.mem.writeInt(usize, buf[0..4], map.count(), .little);
+    var wbuf = buf[4..];
 
     // Write the lengths of key/values.
-    var base: usize = 4;
     iter = map.iterator();
     while (iter.next()) |header| {
-        std.mem.writeInt(usize, buf[base .. base + 4][0..@sizeOf(usize)], header.key_ptr.len, .little);
-        std.mem.writeInt(usize, buf[base + 4 .. base + 8][0..@sizeOf(usize)], header.value_ptr.len, .little);
-        base += 8;
+        std.mem.writeInt(usize, wbuf[0..4], header.key_ptr.len, .little);
+        std.mem.writeInt(usize, wbuf[4..8], header.value_ptr.len, .little);
+        wbuf = wbuf[8..];
     }
 
-    // Write key/valuees.
+    // Write key/values.
     iter = map.iterator();
     while (iter.next()) |header| {
         // Copy key.
-        @memcpy(buf[base..], header.key_ptr.*);
-        base += header.key_ptr.len;
-        buf[base] = 0;
-        base += 1;
+        @memcpy(wbuf[0..header.key_ptr.len], header.key_ptr.*);
+        wbuf[header.key_ptr.len] = 0;
+        wbuf = wbuf[header.key_ptr.len + 1 ..];
+
         // Copy value.
-        @memcpy(buf[base..], header.value_ptr.*);
-        base += header.value_ptr.len;
-        buf[base] = 0;
-        base += 1;
+        @memcpy(wbuf[0..header.value_ptr.len], header.value_ptr.*);
+        wbuf[header.value_ptr.len] = 0;
+        wbuf = wbuf[header.value_ptr.len + 1 ..];
     }
-    std.debug.assert(base == buf.len);
+    std.debug.assert(wbuf.len == 0);
     return buf;
 }
 
@@ -662,6 +661,25 @@ pub fn recordMetric(metric_id: u32, value: u64) hostcallErrors!void {
         .Ok => {},
         .NotFound => return hostcallErrors.NotFound,
         .BadArgument => return hostcallErrors.BadArgument,
+        else => unreachable,
+    }
+}
+
+// spec 0.2.1
+extern "env" fn proxy_get_log_level(
+    return_log_level: *enums.LogLevel,
+) enums.Status;
+
+/// getLogLevel returns the host's current loging level.
+/// Note: hosts might change the log level at runtime and currently there's no callback
+/// to notify the Wasm module about it, so the log level can become stale.
+pub fn getLogLevel() hostcallErrors!enums.LogLevel {
+    var log_level: enums.LogLevel = undefined;
+    switch (proxy_get_log_level(&log_level)) {
+        .Ok => {
+            return @enumFromInt(log_level);
+        },
+        .InvalidMemoryAccess => return hostcallErrors.InvalidMemoryAccess,
         else => unreachable,
     }
 }

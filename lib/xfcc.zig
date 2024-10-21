@@ -2,7 +2,7 @@ const std = @import("std");
 const mecha = @import("mecha");
 
 const KeyValue = struct {
-    key: []const u8,
+    key: Keys,
     value: []const u8,
 };
 
@@ -18,8 +18,9 @@ const key_value = mecha.combine(.{ header_key, mecha.ascii.char('=').discard(), 
 // Keys
 const key_hash = mecha.string("Hash");
 const key_cert = mecha.string("Cert");
+
 // TODO: add the rest of XFCC keys
-const header_key = mecha.oneOf(.{ key_hash, key_cert });
+const header_key = mecha.oneOf(.{ key_hash, key_cert }).convert(mecha.toEnum(Keys));
 
 const quote_char = mecha.ascii.char('"').discard();
 const separator_char = mecha.ascii.char(';').discard();
@@ -33,3 +34,13 @@ const identifier_char = mecha.oneOf(.{
 const identifier = identifier_char.many(.{ .collect = false, .min = 1 });
 const header_value = mecha.oneOf(.{ identifier, quoted_identifier });
 const quoted_identifier = mecha.combine(.{ quote_char, identifier, quote_char });
+
+const Keys = enum(u8) {
+    Hash,
+    By,
+    Cert,
+    Chain,
+    Subject,
+    URI,
+    DNS,
+};
