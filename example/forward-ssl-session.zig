@@ -258,7 +258,14 @@ const ForwardSslSession = struct {
             defer issuer.deinit();
             const iss = issuer.toOwnedSlice() catch unreachable;
             headers.map.put("x-ssl-issuer", iss) catch unreachable;
-            //headers.map.put("x-ssl-serial", self.cert.tbs_certificate.serial_number.serial.slice()) catch unreachable;
+            const serial = self.cert.tbs_certificate.serial_number.serial.constSlice();
+            const serial_number = std.fmt.allocPrint(
+                allocator,
+                "0x{s}",
+                .{std.fmt.fmtSliceHexLower(serial)},
+            ) catch unreachable;
+            defer allocator.free(serial_number);
+            headers.map.put("x-ssl-serial", serial_number) catch unreachable;
             hostcalls.replaceHeaderMap(enums.MapType.HttpResponseHeaders, headers.map) catch unreachable;
         }
 
